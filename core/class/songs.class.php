@@ -36,12 +36,34 @@ class songs extends eqLogic {
       }
     }
     try {
-      $url = config::byKey('service::cloud::url').'/user/';
-      $url .= sha512(mb_strtolower(config::byKey('market::username')).':'.config::byKey('market::password'));
-      $url .= '/service/tts';
+      $cloudToken = null;
+      if (is_callable(array('repo_market', 'getCloudToken'))) {
+        try {
+          $cloudToken = repo_market::getCloudToken();
+        } catch (Exception $e) {
+          if ($e->getCode() !== 401) {
+            throw $e;
+          }
+        }
+      }
+      $baseUrl = config::byKey('service::cloud::url');
+      if ($cloudToken) {
+        if (strtolower((string) parse_url($baseUrl, PHP_URL_SCHEME)) !== 'https') {
+          throw new Exception(__('Le service Cloud doit utiliser HTTPS.', __FILE__));
+        }
+        $url = $baseUrl . '/service/tts';
+      } else {
+        $url = $baseUrl . '/user/';
+        $url .= sha512(mb_strtolower(config::byKey('market::username')).':'.config::byKey('market::password'));
+        $url .= '/service/tts';
+      }
       $url .= '?lang='.config::byKey('language', 'core', 'fr_FR');
       $url .= '&text='.urlencode($_text);
       $request_http = new com_http(trim($url,'&'));
+      if ($cloudToken) {
+        $request_http->setNoSslCheck(false);
+        $request_http->setHeader(array('Authorization: Bearer ' . $cloudToken));
+      }
       $datas = $request_http->exec();
       if(is_json($datas)){
         throw new \Exception(__('Erreur sur la récuperation des données : ',__FILE__).$datas);
